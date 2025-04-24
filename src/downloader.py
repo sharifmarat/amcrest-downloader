@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 import sys
+import os
+from pathlib import Path
 import re
 import datetime
 import yaml
@@ -27,11 +29,25 @@ def isCompleteFile(f):
         return False
     return True
 
+def isSDCard(f):
+    if f["FilePath"].startswith("/"):
+        return True
+    return False
+
+def fileToDstPath(dst, f):
+    orig_path = Path(f["FilePath"])
+    start_time = f["StartTime"]
+    path=f'{dst}/start_time.strftime("%Y/%m-%B/%d-%A")'
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    fname=start_time.strftime("%Y-%m-%d_%H:%M:%S")
+    return Path(dst) / start_time.strftime("%Y/%m-%B/%d-%A") / f'{start_time.strftime("%Y-%m-%d_%H:%M:%S")}{orig_path.suffix}'
+
 def findFiles(start_time, end_time):
     res = []
 
     for text in camera.find_files(start_time, end_time, channel=1):
-        #print(f"MARAT {text}")
         tokens = text.split('\r\n')
         if len(tokens) == 0:
             continue
@@ -49,7 +65,7 @@ def findFiles(start_time, end_time):
                 raise Exception(f'cannot parse index of an items {line}')
             index = indexes[0]
             if index != current_index:
-                if isValidFileObject(current_object) and isCompleteFile(current_object):
+                if isValidFileObject(current_object) and isCompleteFile(current_object) and isSDCard(current_object):
                     res.append(current_object)
                 current_index = index
                 current_object = {}
@@ -57,12 +73,12 @@ def findFiles(start_time, end_time):
             if key.endswith(".FilePath"):
                 current_object["FilePath"] = value
             if key.endswith(".StartTime"):
-                current_object["StartTime"] = value
+                current_object["StartTime"] = datetime.datetime.fromisoformat(value)
             if key.endswith(".EndTime"):
-                current_object["EndTime"] = value
+                current_object["EndTime"] = datetime.datetime.fromisoformat(value)
             #TODO: Parse flags
             #items[3].Flags[0]=Event
-        if isValidFileObject(current_object) and isCompleteFile(current_object):
+        if isValidFileObject(current_object) and isCompleteFile(current_object) and isSDCard(current_object):
             res.append(current_object)
 
     return res
@@ -114,7 +130,10 @@ if args.daemon:
 end_time = datetime.datetime.now()
 start_time = end_time - datetime.timedelta(hours=2)
 files = findFiles(start_time, end_time)
-print(f"len={len(files)}; files={files}")
+print(f"Found len={len(files)} files")
+for file in files:
+    print(fileToDstPath(config.destination, file))
+
 
 #if file_name:
 #    print("Downloading {}...".format(file_name))
